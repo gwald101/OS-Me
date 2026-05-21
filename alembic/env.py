@@ -19,11 +19,13 @@ import app.models.glucose  # noqa: E402, F401
 
 target_metadata = Base.metadata
 
-# Override sqlalchemy.url from environment if set (Railway injects DATABASE_URL)
+# Override sqlalchemy.url from environment if set (Railway injects DATABASE_URL).
+# This env.py uses the async migration template, so the URL must use the
+# asyncpg driver. Railway injects a plain postgresql:// URL, so upgrade it.
 db_url = os.getenv("DATABASE_URL", "")
 if db_url:
-    # Alembic uses sync psycopg2; replace asyncpg scheme for migration runs
-    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,
