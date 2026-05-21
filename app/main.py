@@ -3,12 +3,25 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.routers import glucose, health
 
 logging.basicConfig(level=settings.LOG_LEVEL)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains"
+        )
+        return response
 
 
 @asynccontextmanager
@@ -36,6 +49,14 @@ app = FastAPI(
     "Glucose data is polled from Dexcom Share every 5 minutes.",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_credentials=False,
 )
 
 app.include_router(health.router)

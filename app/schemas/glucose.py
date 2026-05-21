@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict
 class GlucoseReadingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
     recorded_at: datetime
     glucose_mgdl: int
     trend: str

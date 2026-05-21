@@ -43,3 +43,4 @@ logs/
 
 # Misc
 .claude/settings.local.json
+SECURITY_FIXES.md

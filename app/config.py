@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,15 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+asyncpg://", 1)
         return v
+
+    @model_validator(mode="after")
+    def require_dexcom_credentials(self) -> "Settings":
+        if not self.DEXCOM_USERNAME or not self.DEXCOM_PASSWORD:
+            raise ValueError(
+                "DEXCOM_USERNAME and DEXCOM_PASSWORD must be set "
+                "(check your environment variables or .env file)"
+            )
+        return self
 
 
 settings = Settings()
