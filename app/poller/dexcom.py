@@ -13,14 +13,29 @@ from app.models.glucose import GlucoseReading
 
 log = logging.getLogger(__name__)
 
+# Dexcom Share retains ~24h of history. On the first poll after startup we pull
+# the full window to backfill any gap; subsequent polls only need a small window
+# (the upsert is idempotent, so a little overlap is harmless and covers missed polls).
+BACKFILL_MINUTES = 1440
+BACKFILL_MAX_COUNT = 288
+STEADY_MINUTES = 30
+STEADY_MAX_COUNT = 6
+
+# Flipped to False after the first successful backfill poll.
+_needs_backfill = True
+
 
 def _make_reading_id(recorded_at_iso: str, glucose_mgdl: int) -> str:
     raw = f"{recorded_at_iso}:{glucose_mgdl}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def _fetch_sync() -> list[dict]:
-    """Synchronous Dexcom Share poll — runs in a thread executor."""
+def _fetch_sync(minutes: int, max_count: int) -> list[dict] | None:
+    """Synchronous Dexcom Share poll — runs in a thread executor.
+
+    Returns a list of reading rows (possibly empty) on success, or None if the
+    poll failed, so the caller can tell "no recent data" apart from "error".
+    """
     try:
         region = Region.OUS if settings.DEXCOM_OUTSIDE_US else Region.US
         dx = Dexcom(
@@ -28,7 +43,7 @@ def _fetch_sync() -> list[dict]:
             password=settings.DEXCOM_PASSWORD,
             region=region,
         )
-        readings = dx.get_glucose_readings(minutes=10, max_count=3)
+        readings = dx.get_glucose_readings(minutes=minutes, max_count=max_count)
         rows = []
         for r in readings or []:
             # Ensure UTC-aware timestamp
@@ -51,15 +66,33 @@ def _fetch_sync() -> list[dict]:
         return rows
     except Exception:
         log.exception("Dexcom Share poll failed")
-        return []
+        return None
 
 
 async def poll_dexcom() -> None:
+    global _needs_backfill
+
     if not settings.DEXCOM_USERNAME or not settings.DEXCOM_PASSWORD:
         log.warning("Dexcom credentials not configured — skipping poll")
         return
 
-    rows = await asyncio.get_event_loop().run_in_executor(None, _fetch_sync)
+    if _needs_backfill:
+        minutes, max_count = BACKFILL_MINUTES, BACKFILL_MAX_COUNT
+    else:
+        minutes, max_count = STEADY_MINUTES, STEADY_MAX_COUNT
+
+    rows = await asyncio.get_event_loop().run_in_executor(
+        None, _fetch_sync, minutes, max_count
+    )
+
+    if rows is None:
+        # Poll errored; keep backfill pending so the next cycle retries the wide window.
+        return
+
+    # Poll succeeded — mark backfill done even if it returned nothing (no recent
+    # data), so we don't re-pull 24h on every cycle.
+    _needs_backfill = False
+
     if not rows:
         log.debug("No new readings from Dexcom Share")
         return
