@@ -10,6 +10,8 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "alembic>=1.13",
     "pydexcom>=0.2",
+    "tconnectsync>=2.0",
+    "setuptools<80",
     "apscheduler>=3.10",
     "pydantic-settings>=2.0",
 ]

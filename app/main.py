@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.routers import glucose, health
+from app.routers import glucose, health, insulin
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 
@@ -37,6 +37,23 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         next_run_time=datetime.now(UTC),
     )
+
+    if settings.tandem_enabled:
+        from app.poller.tandem import poll_tandem
+
+        scheduler.add_job(
+            poll_tandem,
+            trigger="interval",
+            minutes=settings.TANDEM_POLL_INTERVAL_MINUTES,
+            id="tandem_poller",
+            replace_existing=True,
+            next_run_time=datetime.now(UTC),
+        )
+    else:
+        logging.getLogger(__name__).info(
+            "Tandem credentials not configured — skipping Tandem poller"
+        )
+
     scheduler.start()
     app.state.scheduler = scheduler
     yield
@@ -61,3 +78,5 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(glucose.router)
+app.include_router(insulin.basal_router)
+app.include_router(insulin.bolus_router)

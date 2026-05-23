@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     DEXCOM_PASSWORD: str = ""
     DEXCOM_OUTSIDE_US: bool = False
     POLL_INTERVAL_MINUTES: int = 5
+    TANDEM_EMAIL: str = ""
+    TANDEM_PASSWORD: str = ""
+    TANDEM_POLL_INTERVAL_MINUTES: int = 15
     LOG_LEVEL: str = "INFO"
     DEFAULT_LOW_THRESHOLD: int = 70
     DEFAULT_HIGH_THRESHOLD: int = 180
@@ -30,6 +33,19 @@ class Settings(BaseSettings):
                 "(check your environment variables or .env file)"
             )
         return self
+
+    @model_validator(mode="after")
+    def tandem_credentials_coupled(self) -> "Settings":
+        # Tandem is optional, but email/password must come together.
+        if bool(self.TANDEM_EMAIL) != bool(self.TANDEM_PASSWORD):
+            raise ValueError(
+                "TANDEM_EMAIL and TANDEM_PASSWORD must either both be set or both be empty"
+            )
+        return self
+
+    @property
+    def tandem_enabled(self) -> bool:
+        return bool(self.TANDEM_EMAIL) and bool(self.TANDEM_PASSWORD)
 
 
 settings = Settings()
